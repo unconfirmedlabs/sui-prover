@@ -4,4 +4,6 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
+std = { system = "std" }
+sui = { system = "sui" }
 prover = { local = "../prover", override = true }
