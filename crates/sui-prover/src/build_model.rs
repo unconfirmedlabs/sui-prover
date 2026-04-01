@@ -109,6 +109,7 @@ fn build_global_env(root_pkg: &RootPackage<ProverFlavor>) -> Result<GlobalEnv> {
             named_address_map: named_addresses.inner,
         };
 
+        // debug removed
         if pkg.is_root() {
             targets.push(package_paths);
         } else {

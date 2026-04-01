@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 const SYSTEM_SUI_GIT_REPO: &str = "https://github.com/asymptotic-code/sui.git";
-const SYSTEM_PROVER_GIT_REPO: &str = "https://github.com/unconfirmedlabs/sui-prover.git";
+const PROVER_GIT_REPO: &str = "https://github.com/unconfirmedlabs/sui-prover.git";
 const SYSTEM_GIT_REV: &str = "321cf9102594b6ad3338b77735e1b55af92ab0ee";
 const PROVER_GIT_REV: &str = "b76bbac190eec6afefcfc6656843e59fd58402a5";
 
@@ -122,9 +122,13 @@ impl MoveFlavor for ProverFlavor {
     fn implicit_dependencies(
         _environment: &EnvironmentID,
     ) -> BTreeMap<PackageName, ReplacementDependency> {
+        use move_package_alt::schema::{
+            DefaultDependency, ManifestDependencyInfo, ManifestGitDependency,
+        };
+
         let mut deps = BTreeMap::new();
 
-        // Implicit system deps: std and sui
+        // Implicit system deps: std and sui (injected by the Sui runtime)
         deps.insert(
             PackageName::new("sui").expect("valid identifier"),
             ReplacementDependency::override_system_dep("sui"),
@@ -134,105 +138,67 @@ impl MoveFlavor for ProverFlavor {
             ReplacementDependency::override_system_dep("std"),
         );
 
-        // SuiProver implicit dependency
-        let local_framework_path = std::env::var("SUI_PROVER_FRAMEWORK_PATH").ok();
+        // Helper to create a git-based implicit dep from our prover repo
+        let prover_git_dep = |subdir: &str| -> ReplacementDependency {
+            ReplacementDependency {
+                dependency: Some(DefaultDependency {
+                    dependency_info: ManifestDependencyInfo::Git(ManifestGitDependency {
+                        repo: PROVER_GIT_REPO.to_string(),
+                        subdir: PathBuf::from(subdir),
+                        rev: Some(PROVER_GIT_REV.to_string()),
+                    }),
+                    is_override: false,
+                    rename_from: None,
+                    modes: None,
+                }),
+                addresses: None,
+                use_environment: None,
+            }
+        };
 
-        if let Some(base_path) = &local_framework_path {
-            for dir_name in ["sui-prover", "SuiProver", "prover"] {
-                let local_path = PathBuf::from(base_path).join(dir_name);
-                if local_path.exists() && local_path.join("Move.toml").exists() {
-                    deps.insert(
-                        PackageName::new("SuiProver").expect("valid identifier"),
+        // Check for local framework path override
+        if let Some(base_path) = std::env::var("SUI_PROVER_FRAMEWORK_PATH").ok() {
+            let local_dep = |dir: &str| -> Option<(PackageName, ReplacementDependency)> {
+                let path = PathBuf::from(&base_path).join(dir);
+                if path.exists() && path.join("Move.toml").exists() {
+                    Some((
+                        PackageName::new(dir).expect("valid identifier"),
                         ReplacementDependency {
-                            dependency: Some(
-                                move_package_alt::schema::DefaultDependency {
-                                    dependency_info: move_package_alt::schema::ManifestDependencyInfo::Local(
-                                        move_package_alt::schema::LocalDepInfo {
-                                            local: local_path,
-                                        },
-                                    ),
-                                    is_override: true,
-                                    rename_from: None,
-                                    modes: None,
-                                },
-                            ),
+                            dependency: Some(DefaultDependency {
+                                dependency_info: ManifestDependencyInfo::Local(
+                                    move_package_alt::schema::LocalDepInfo { local: path },
+                                ),
+                                is_override: false,
+                                rename_from: None,
+                                modes: None,
+                            }),
                             addresses: None,
                             use_environment: None,
                         },
-                    );
-                    return deps;
+                    ))
+                } else {
+                    None
                 }
-            }
-            // Local path specified but SuiProver not found — don't add git fallback
+            };
+
+            if let Some(d) = local_dep("sui_prover") { deps.insert(d.0, d.1); }
+            if let Some(d) = local_dep("specs") { deps.insert(d.0, d.1); }
+            if let Some(d) = local_dep("prover") { deps.insert(d.0, d.1); }
             return deps;
         }
 
-        // Default: use git-based SuiProver.
-        // The SuiProver package depends on SuiSpecs (local sibling), which requires
-        // the full repo checkout. Git deps with subdirs handle this correctly.
+        // Default: git-based prover packages from our fork
         deps.insert(
-            PackageName::new("SuiProver").expect("valid identifier"),
-            ReplacementDependency {
-                dependency: Some(move_package_alt::schema::DefaultDependency {
-                    dependency_info: move_package_alt::schema::ManifestDependencyInfo::Git(
-                        move_package_alt::schema::ManifestGitDependency {
-                            repo: SYSTEM_PROVER_GIT_REPO.to_string(),
-                            subdir: PathBuf::from("packages/sui-prover"),
-                            rev: Some(PROVER_GIT_REV.to_string()),
-                        },
-                    ),
-                    is_override: true,
-                    rename_from: None,
-                    modes: None,
-                }),
-                addresses: None,
-                use_environment: None,
-            },
+            PackageName::new("sui_prover").expect("valid identifier"),
+            prover_git_dep("packages/sui_prover"),
         );
-
-        // Also inject SuiSpecs as it's a transitive dep of SuiProver.
-        // The package is named "SuiSpecs" in its manifest but the new system reads
-        // the legacy [addresses] section key "specs" as the identifier for legacy packages.
         deps.insert(
-            PackageName::new("SuiSpecs").expect("valid identifier"),
-            ReplacementDependency {
-                dependency: Some(move_package_alt::schema::DefaultDependency {
-                    dependency_info: move_package_alt::schema::ManifestDependencyInfo::Git(
-                        move_package_alt::schema::ManifestGitDependency {
-                            repo: SYSTEM_PROVER_GIT_REPO.to_string(),
-                            subdir: PathBuf::from("packages/sui-specs"),
-                            rev: Some(PROVER_GIT_REV.to_string()),
-                        },
-                    ),
-                    is_override: true,
-                    rename_from: None,
-                    modes: None,
-                }),
-                addresses: None,
-                use_environment: None,
-            },
+            PackageName::new("specs").expect("valid identifier"),
+            prover_git_dep("packages/specs"),
         );
-
-        // Also inject Prover (the core prover package).
-        // Same legacy [addresses] key issue — "prover" vs "Prover".
         deps.insert(
-            PackageName::new("Prover").expect("valid identifier"),
-            ReplacementDependency {
-                dependency: Some(move_package_alt::schema::DefaultDependency {
-                    dependency_info: move_package_alt::schema::ManifestDependencyInfo::Git(
-                        move_package_alt::schema::ManifestGitDependency {
-                            repo: SYSTEM_PROVER_GIT_REPO.to_string(),
-                            subdir: PathBuf::from("packages/prover"),
-                            rev: Some(PROVER_GIT_REV.to_string()),
-                        },
-                    ),
-                    is_override: true,
-                    rename_from: None,
-                    modes: None,
-                }),
-                addresses: None,
-                use_environment: None,
-            },
+            PackageName::new("prover").expect("valid identifier"),
+            prover_git_dep("packages/prover"),
         );
 
         deps

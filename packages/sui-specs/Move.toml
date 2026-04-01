@@ -1,9 +1,0 @@
-[package]
-name = "SuiSpecs"
-version = "0.0.1"
-edition = "2024.beta"
-
-[dependencies]
-std = { system = "std" }
-sui = { system = "sui" }
-Prover = { local = "../prover", override = true }

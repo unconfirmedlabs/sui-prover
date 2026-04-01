@@ -1,6 +1,4 @@
 [package]
-name = "Prover"
-edition = "2024.beta"
-
-[dependencies]
-std = { system = "std" }
+name = "prover"
+edition = "2024"
+license = "Apache-2.0"
