@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 const SYSTEM_SUI_GIT_REPO: &str = "https://github.com/asymptotic-code/sui.git";
 const PROVER_GIT_REPO: &str = "https://github.com/unconfirmedlabs/sui-prover.git";
 const SYSTEM_GIT_REV: &str = "321cf9102594b6ad3338b77735e1b55af92ab0ee";
-const PROVER_GIT_REV: &str = "b76bbac190eec6afefcfc6656843e59fd58402a5";
+const PROVER_GIT_REV: &str = "49e2edd02d1850696518c8f1fe197ea7bd1c3c07";
 
 /// Well-known Sui system addresses (0x0 through 0xf, plus 0xdee9 for DeepBook).
 const SYSTEM_ADDRESSES: &[u64] = &[0x0, 0x1, 0x2, 0x3, 0x5, 0x6, 0x7, 0x8, 0x9, 0xdee9];
