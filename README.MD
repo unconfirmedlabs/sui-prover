@@ -1,117 +1,134 @@
-# Sui Prover
+# Sui Prover (unconfirmedlabs fork)
 
-A tool for verifying the correctness of Move smart contracts on the Sui blockchain. Based on the Boogie verification engine and the Z3 SMT solver.
+Formal verification for Sui Move smart contracts. Based on the Boogie verification engine and the Z3 SMT solver.
 
-Go to [Sui Prover Documentation](https://info.asymptotic.tech/sui-prover) for more information.
+This is a fork of [asymptotic-code/sui-prover](https://github.com/asymptotic-code/sui-prover) with the following changes:
 
-## Quick Start
+### What's different from upstream
 
-### Install from brew
+**MVR support** — Uses `move-package-alt` for dependency resolution, which supports the current MVR protocol (`r.mvr = "@namespace/package"`). The upstream prover uses the legacy `move-package` crate which calls MVR with a deprecated interface.
+
+**Modernized prover packages** — The `prover`, `specs`, and `sui_prover` Move packages were recreated with `sui move new` to align with the current Sui package management system. No deprecated `[addresses]` sections.
+
+**ProverFlavor** — A lightweight `MoveFlavor` implementation that provides Sui system deps and prover framework injection without depending on the full Sui SDK.
+
+## Install
+
+### Build from source
 
 ```bash
-brew install asymptotic-code/sui-prover/sui-prover
+git clone https://github.com/unconfirmedlabs/sui-prover.git
+cd sui-prover
+cargo install --path crates/sui-prover
 ```
 
-## Basic Usage
+### Dependencies
 
-Write specifications for your smart contract that the Sui Prover will verify.
+The prover requires Boogie and Z3. Install via Homebrew:
 
-### Specification Structure
+```bash
+brew install z3 dotnet@8
+```
 
-```rust
+Boogie must be built from source (it's a .NET application):
+
+```bash
+git clone https://github.com/boogie-org/boogie.git
+cd boogie
+dotnet build Source/Boogie.sln -c Release
+# The binary is at Source/BoogieDriver/bin/Release/net8.0/BoogieDriver
+```
+
+Set the required environment variables:
+
+```bash
+export DOTNET_ROOT=$(brew --prefix dotnet@8)/libexec
+export BOOGIE_EXE=/path/to/BoogieDriver
+export Z3_EXE=$(which z3)
+```
+
+## Usage
+
+Run from a directory containing `Move.toml`:
+
+```bash
+sui-prover           # compact output
+sui-prover -v        # verbose — shows each check
+sui-prover -t 300    # custom timeout (seconds)
+sui-prover -g        # generate Boogie code only (no verification)
+```
+
+### Writing specifications
+
+Specs live alongside source files in `sources/`. Each spec is a function annotated with `#[spec(prove)]` that calls the function under test and asserts properties with `requires()` and `ensures()`:
+
+```move
+module my_package::my_spec;
+
+#[spec_only]
+use prover::prover::{requires, ensures};
+use my_package::my_module;
+
 #[spec(prove)]
-fun function_spec<T>(args): ReturnType {
-    // Preconditions on arguments
-    
-    let result = original_function(args);
-    
-    // Postconditions that must hold
-    
+fun add_spec(a: u64, b: u64): u64 {
+    requires(a <= 1000);
+    requires(b <= 1000);
+    let result = my_module::add(a, b);
+    ensures(result == a + b);
     result
 }
 ```
 
-### Example
+#### Proving a function aborts
 
-Consider a simplified LP (Liquidity Pool) smart contract:
+Use `ignore_abort` with `ensures(false)` — if the function doesn't abort, the ensures would fail, proving it must abort:
 
-```rust
-module amm::simple_lp;
-
-use sui::balance::{Balance, Supply, zero};
-
-public struct LP<phantom T> has drop {}
-
-public struct Pool<phantom T> has store {
-    balance: Balance<T>,
-    shares: Supply<LP<T>>,
-}
-
-public fun withdraw<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    if (shares_in.value() == 0) {
-        shares_in.destroy_zero();
-        return zero()
-    };
-
-    let balance = pool.balance.value();
-    let shares = pool.shares.supply_value();
-
-    let balance_to_withdraw = (((shares_in.value() as u128) * (balance as u128)) / (shares as u128)) as u64;
-
-    pool.shares.decrease_supply(shares_in);
-    pool.balance.split(balance_to_withdraw)
+```move
+#[spec(prove, ignore_abort)]
+fun divide_by_zero_aborts_spec() {
+    let _result = my_module::divide(10, 0);
+    ensures(false); // unreachable if function aborts
 }
 ```
 
-### Example Specification
+#### Capturing pre-state
 
-A specification to verify that the price of a share doesn't decrease when withdrawing funds:
+Use `clone!()` to snapshot values before mutation:
 
-```rust
-#[spec(prove)]
-fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= pool.shares.supply_value());
-
-    let old_pool = clone!(pool);
-
-    let result = withdraw(pool, shares_in);
-
-    let old_balance = old_pool.balance.value().to_int();
-    let new_balance = pool.balance.value().to_int();
-
-    let old_shares = cloned_pool.shares.supply_value().to_int();
-    let new_shares = pool.shares.supply_value().to_int();
-
-    ensures(new_shares.mul(old_balance).lte(old_shares.mul(new_balance)));
-
-    result
+```move
+#[spec(prove, ignore_abort)]
+fun push_increments_length_spec(v: &mut vector<u64>, val: u64) {
+    let old_len = clone!(v).length();
+    v.push_back(val);
+    ensures(v.length() == old_len + 1);
 }
 ```
 
-## Running the Sui Prover
+### MVR dependencies
 
-Run from the `move.toml` directory:
+This fork supports MVR out of the box. Use `r.mvr` in your `Move.toml`:
 
-```bash
-sui-prover
+```toml
+[dependencies]
+my_dep = { r.mvr = "@namespace/package" }
 ```
 
-## Claude Code Integration
+No special configuration needed — the prover calls the `mvr` CLI for resolution, just like `sui move build`.
 
-Install the Sui Prover skill for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) to get AI-assisted specification writing, verification debugging, and prover guidance.
+## Output
 
-Add the plugin source:
-```
-/plugin marketplace add asymptotic-code/sui-prover
-```
+Each spec generates 3 verification checks:
 
-Install the plugin:
-```
-/plugin install sui-prover@sui-prover
-```
+- **`_Check`** — Does the `ensures()` hold for all valid inputs? Z3 exhaustively searches for a counterexample.
+- **`_Assume`** — Are the `requires()` conditions satisfiable? Catches vacuously true specs.
+- **`_SpecNoAbortCheck`** — Does the spec function itself not abort?
 
-Once installed, Claude Code can help you write specifications, run the prover, and debug verification failures using the `/sui-prover` command.
+A passing run means the property is **mathematically proven** for all inputs satisfying the preconditions.
 
-## See Also
+## Upstream documentation
 
-[Sui Prover Documentation](https://info.asymptotic.tech/sui-prover)
+For the full spec language reference (quantifiers, ghost variables, loop invariants, datatype invariants), see the [Sui Prover Documentation](https://info.asymptotic.tech/sui-prover).
+
+## License
+
+Apache-2.0
