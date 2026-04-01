@@ -12,6 +12,7 @@ mod legacy_builder;
 mod llm_explain;
 mod prompts;
 mod prove;
+mod prover_flavor;
 mod remote_config;
 mod system_dependencies;
 

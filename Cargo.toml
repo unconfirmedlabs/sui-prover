@@ -82,6 +82,8 @@ indexmap = "2.12.0"
 move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-package = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-package-alt = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-package-alt-compilation = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
